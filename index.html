@@ -806,19 +806,19 @@
 const DAYS    = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 const SHIFTS  = ['Mañana','Tarde','Noche'];
 const SHIFT_META = {
-  'Mañana':  { icon:'🌅', time:'6:00 – 12:00 md', cls:'shift-morning'  },
-  'Tarde':   { icon:'☀️', time:'12:00 md – 6:00 pm', cls:'shift-afternoon'},
-  'Noche':   { icon:'🌙', time:'6:00 – 11:59 pm', cls:'shift-night'    }
+  'Mañana':  { icon:'🌅', time:'8:00 am – 12:00 md', cls:'shift-morning'  },
+  'Tarde':   { icon:'☀️', time:'1:00 – 5:00 pm', cls:'shift-afternoon'},
+  'Noche':   { icon:'🌙', time:'5:00 – 9:30 pm', cls:'shift-night'    }
 };
-// Which 12-hour clock numbers can be picked for each turno. The 12 (mediodía)
-// is shared between Mañana and Tarde on purpose, so a class like "8 a 12" or
-// "12 a 6" can be entered without ever asking for AM/PM: the special-case
-// rule in toHour24() always treats 12 as noon (PM), and every other hour
-// takes AM for Mañana or PM for Tarde/Noche.
+// Which 12-hour clock numbers can be picked for each turno, based on the
+// real schedule: Mañana 8–12, Tarde 1–5, Noche 5–9:30. The 12 (mediodía) only
+// shows up under Mañana, so toHour24() can safely treat 12 as noon (PM) and
+// every other hour as AM for Mañana or PM for Tarde/Noche — no AM/PM picker
+// needed.
 const SHIFT_HOURS_12 = {
-  'Mañana': [6,7,8,9,10,11,12],  // AM, except 12 = mediodía
-  'Tarde':  [12,1,2,3,4,5,6],    // PM, 12 = mediodía
-  'Noche':  [6,7,8,9,10,11]      // PM
+  'Mañana': [8,9,10,11,12],  // AM, except 12 = mediodía
+  'Tarde':  [1,2,3,4,5],     // PM
+  'Noche':  [5,6,7,8,9]      // PM
 };
 const PRESET_COLORS = [
   '#7c3aed','#3b82f6','#06b6d4','#10b981',
