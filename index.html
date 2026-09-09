@@ -806,16 +806,19 @@
 const DAYS    = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 const SHIFTS  = ['Mañana','Tarde','Noche'];
 const SHIFT_META = {
-  'Mañana':  { icon:'🌅', time:'6:00 – 11:59', cls:'shift-morning'  },
-  'Tarde':   { icon:'☀️', time:'12:00 – 17:59', cls:'shift-afternoon'},
-  'Noche':   { icon:'🌙', time:'18:00 – 23:59', cls:'shift-night'    }
+  'Mañana':  { icon:'🌅', time:'6:00 – 12:00 md', cls:'shift-morning'  },
+  'Tarde':   { icon:'☀️', time:'12:00 md – 6:00 pm', cls:'shift-afternoon'},
+  'Noche':   { icon:'🌙', time:'6:00 – 11:59 pm', cls:'shift-night'    }
 };
-// Which 12-hour clock numbers belong to each turno. Because a turno already
-// tells us AM or PM, we never need to ask the user to pick AM/PM separately.
+// Which 12-hour clock numbers can be picked for each turno. The 12 (mediodía)
+// is shared between Mañana and Tarde on purpose, so a class like "8 a 12" or
+// "12 a 6" can be entered without ever asking for AM/PM: the special-case
+// rule in toHour24() always treats 12 as noon (PM), and every other hour
+// takes AM for Mañana or PM for Tarde/Noche.
 const SHIFT_HOURS_12 = {
-  'Mañana': [6,7,8,9,10,11],   // all AM
-  'Tarde':  [12,1,2,3,4,5],    // all PM (12 = mediodía)
-  'Noche':  [6,7,8,9,10,11]    // all PM
+  'Mañana': [6,7,8,9,10,11,12],  // AM, except 12 = mediodía
+  'Tarde':  [12,1,2,3,4,5,6],    // PM, 12 = mediodía
+  'Noche':  [6,7,8,9,10,11]      // PM
 };
 const PRESET_COLORS = [
   '#7c3aed','#3b82f6','#06b6d4','#10b981',
@@ -1003,24 +1006,24 @@ function onShiftChange() {
   } else {
     const meta = SHIFT_META[shift];
     const suffix = shift === 'Mañana' ? 'AM' : 'PM';
-    hint.innerHTML = `Horas de ${meta.icon} <strong>${shift}</strong> (${meta.time}) — se guardan como <strong>${suffix}</strong> automáticamente.`;
+    hint.innerHTML = `Horas de ${meta.icon} <strong>${shift}</strong> (${meta.time}) — se guardan como <strong>${suffix}</strong> automáticamente (el 12 siempre es mediodía).`;
   }
 }
 
-// Convert a 12-hour clock number + turno into a 24-hour hour number
+// Convert a 12-hour clock number + turno into a 24-hour hour number.
+// 12 is always treated as mediodía (12:00, PM) regardless of turno, so a
+// course can start in the morning and end right at noon (e.g. 8 a 12) or
+// start at noon and run into the afternoon (e.g. 12 a 6) without ever
+// asking the user for AM/PM.
 function toHour24(shift, h12) {
-  if (shift === 'Mañana') return h12;                       // 6-11 -> 6-11
-  if (shift === 'Tarde')  return h12 === 12 ? 12 : h12 + 12; // 12->12, 1-5 -> 13-17
-  if (shift === 'Noche')  return h12 + 12;                   // 6-11 -> 18-23
-  return h12;
+  if (h12 === 12) return 12;
+  return shift === 'Mañana' ? h12 : h12 + 12;
 }
 
 // Convert a 24-hour hour number back to the 12-hour clock number shown in the picker
 function toHour12(shift, h24) {
-  if (shift === 'Mañana') return h24;
-  if (shift === 'Tarde')  return h24 === 12 ? 12 : h24 - 12;
-  if (shift === 'Noche')  return h24 - 12;
-  return h24;
+  if (h24 === 12) return 12;
+  return shift === 'Mañana' ? h24 : h24 - 12;
 }
 
 // Read the pickers for a prefix and return a "HH:MM" 24h string, or "" if incomplete
