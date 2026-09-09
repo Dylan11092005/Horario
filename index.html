@@ -115,6 +115,7 @@
     box-shadow: 0 4px 20px rgba(124,58,237,0.4);
   }
   .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(124,58,237,0.55); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 
   .btn-ghost {
     background: var(--surface);
@@ -203,12 +204,13 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 6px 10px;
-    transition: border-color 0.2s, background 0.2s;
+    transition: border-color 0.2s, background 0.2s, opacity 0.2s;
   }
   .time-picker:focus-within {
     border-color: var(--accent-purple);
     background: rgba(167,139,250,0.08);
   }
+  .time-picker.disabled { opacity: 0.4; pointer-events: none; }
   .time-part {
     background: transparent !important;
     border: none !important;
@@ -222,11 +224,18 @@
     appearance: none !important;
     -webkit-appearance: none !important;
     text-align: center;
+    flex: 1;
   }
   .time-part:focus { background: rgba(167,139,250,0.15) !important; border-radius: 6px; }
   .time-part option { background: #1e1b4b; color: #fff; }
-  .ampm-part { font-weight: 700; color: var(--accent-purple) !important; font-size: 0.8rem !important; }
   .time-sep { color: var(--text-secondary); font-weight: 600; font-size: 1rem; line-height: 1; }
+  .time-hint {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    margin-top: 5px;
+    line-height: 1.4;
+  }
+  .time-hint strong { color: var(--accent-purple); }
 
   .form-row {
     display: grid;
@@ -668,7 +677,7 @@
         </div>
         <div class="form-group">
           <label>Turno *</label>
-          <select id="f-shift">
+          <select id="f-shift" onchange="onShiftChange()">
             <option value="">— Seleccionar —</option>
             <option value="Mañana">🌅 Mañana</option>
             <option value="Tarde">☀️ Tarde</option>
@@ -680,49 +689,40 @@
       <div class="form-row">
         <div class="form-group">
           <label>Hora inicio *</label>
-          <div class="time-picker" id="tp-start">
-            <select id="f-start-h" class="time-part">
+          <div class="time-picker disabled" id="tp-start">
+            <select id="f-start-h" class="time-part" disabled>
               <option value="">hh</option>
             </select>
             <span class="time-sep">:</span>
-            <select id="f-start-m" class="time-part">
+            <select id="f-start-m" class="time-part" disabled>
               <option value="">mm</option>
               <option value="00">00</option>
               <option value="15">15</option>
               <option value="30">30</option>
               <option value="45">45</option>
-            </select>
-            <select id="f-start-ampm" class="time-part ampm-part">
-              <option value="">AM/PM</option>
-              <option value="AM">AM</option>
-              <option value="PM">PM</option>
             </select>
           </div>
         </div>
         <div class="form-group">
           <label>Hora fin *</label>
-          <div class="time-picker" id="tp-end">
-            <select id="f-end-h" class="time-part">
+          <div class="time-picker disabled" id="tp-end">
+            <select id="f-end-h" class="time-part" disabled>
               <option value="">hh</option>
             </select>
             <span class="time-sep">:</span>
-            <select id="f-end-m" class="time-part">
+            <select id="f-end-m" class="time-part" disabled>
               <option value="">mm</option>
               <option value="00">00</option>
               <option value="15">15</option>
               <option value="30">30</option>
               <option value="45">45</option>
             </select>
-            <select id="f-end-ampm" class="time-part ampm-part">
-              <option value="">AM/PM</option>
-              <option value="AM">AM</option>
-              <option value="PM">PM</option>
-            </select>
           </div>
         </div>
       </div>
+      <div class="time-hint" id="time-hint">Selecciona un <strong>turno</strong> para habilitar las horas — el AM/PM se asigna solo.</div>
 
-      <div class="form-group">
+      <div class="form-group" style="margin-top:16px">
         <label>Aula / Laboratorio *</label>
         <input type="text" id="f-room" placeholder="Ej. Aula 302 · Lab. Física">
       </div>
@@ -810,6 +810,13 @@ const SHIFT_META = {
   'Tarde':   { icon:'☀️', time:'12:00 – 17:59', cls:'shift-afternoon'},
   'Noche':   { icon:'🌙', time:'18:00 – 23:59', cls:'shift-night'    }
 };
+// Which 12-hour clock numbers belong to each turno. Because a turno already
+// tells us AM or PM, we never need to ask the user to pick AM/PM separately.
+const SHIFT_HOURS_12 = {
+  'Mañana': [6,7,8,9,10,11],   // all AM
+  'Tarde':  [12,1,2,3,4,5],    // all PM (12 = mediodía)
+  'Noche':  [6,7,8,9,10,11]    // all PM
+};
 const PRESET_COLORS = [
   '#7c3aed','#3b82f6','#06b6d4','#10b981',
   '#f59e0b','#ef4444','#ec4899','#8b5cf6'
@@ -821,8 +828,6 @@ let pendingAction = null;
 
 // ─── INIT ────────────────────────────────────────────────────────────────
 function init() {
-  buildHourOptions('f-start-h');
-  buildHourOptions('f-end-h');
   buildColorPresets();
   buildTable();
   loadData();
@@ -851,7 +856,7 @@ function buildColorPresets() {
 function buildTable() {
   const tbody = document.getElementById('schedule-body');
   tbody.innerHTML = '';
-  SHIFTS.forEach(shift => {
+  SHIFTS.forEach((shift, si) => {
     const meta = SHIFT_META[shift];
     const tr = document.createElement('tr');
 
@@ -865,9 +870,9 @@ function buildTable() {
       </div>`;
     tr.appendChild(tdLabel);
 
-    DAYS.forEach(day => {
+    DAYS.forEach((day, di) => {
       const td = document.createElement('td');
-      td.id = cellId(day, shift);
+      td.id = `cell-${di}-${si}`;
       const cc = document.createElement('div');
       cc.className = 'cell-content';
       td.appendChild(cc);
@@ -890,12 +895,6 @@ function saveData() {
 }
 
 // ─── RENDER ──────────────────────────────────────────────────────────────
-function cellId(day, shift) {
-  return `cell-${day.replace(/[áéíóúü]/g, c => ({'á':'a','é':'e','í':'i','ó':'o','ú':'u','ü':'u'}[c]))-shift}`;
-  // simplified:
-}
-
-// Better: use index-based IDs
 function getCellEl(day, shift) {
   const di = DAYS.indexOf(day);
   const si = SHIFTS.indexOf(shift);
@@ -956,6 +955,109 @@ function renderCourse(c) {
 
   content.appendChild(card);
 }
+
+// ─── TIME PICKER (turno-aware, no AM/PM select) ──────────────────────────
+// Rebuild the hour <select> options for a given prefix ('start'|'end')
+// based on the currently chosen turno. Disables the picker entirely when
+// no turno is selected yet.
+function refreshTimePicker(prefix) {
+  const shift  = document.getElementById('f-shift').value;
+  const hSel   = document.getElementById(`f-${prefix}-h`);
+  const mSel   = document.getElementById(`f-${prefix}-m`);
+  const wrap   = document.getElementById(`tp-${prefix}`);
+  const hours  = SHIFT_HOURS_12[shift];
+
+  const prevH = hSel.value;
+  hSel.innerHTML = '<option value="">hh</option>';
+
+  if (!hours) {
+    hSel.disabled = true;
+    mSel.disabled = true;
+    wrap.classList.add('disabled');
+    mSel.value = '';
+    return;
+  }
+
+  hours.forEach(h => {
+    const opt = document.createElement('option');
+    opt.value = String(h);
+    opt.textContent = String(h);
+    hSel.appendChild(opt);
+  });
+
+  hSel.disabled = false;
+  mSel.disabled = false;
+  wrap.classList.remove('disabled');
+
+  // Keep the previous hour selected if it's still valid for this turno
+  if (prevH && hours.includes(Number(prevH))) hSel.value = prevH;
+}
+
+function onShiftChange() {
+  refreshTimePicker('start');
+  refreshTimePicker('end');
+  const shift = document.getElementById('f-shift').value;
+  const hint = document.getElementById('time-hint');
+  if (!shift) {
+    hint.innerHTML = 'Selecciona un <strong>turno</strong> para habilitar las horas — el AM/PM se asigna solo.';
+  } else {
+    const meta = SHIFT_META[shift];
+    const suffix = shift === 'Mañana' ? 'AM' : 'PM';
+    hint.innerHTML = `Horas de ${meta.icon} <strong>${shift}</strong> (${meta.time}) — se guardan como <strong>${suffix}</strong> automáticamente.`;
+  }
+}
+
+// Convert a 12-hour clock number + turno into a 24-hour hour number
+function toHour24(shift, h12) {
+  if (shift === 'Mañana') return h12;                       // 6-11 -> 6-11
+  if (shift === 'Tarde')  return h12 === 12 ? 12 : h12 + 12; // 12->12, 1-5 -> 13-17
+  if (shift === 'Noche')  return h12 + 12;                   // 6-11 -> 18-23
+  return h12;
+}
+
+// Convert a 24-hour hour number back to the 12-hour clock number shown in the picker
+function toHour12(shift, h24) {
+  if (shift === 'Mañana') return h24;
+  if (shift === 'Tarde')  return h24 === 12 ? 12 : h24 - 12;
+  if (shift === 'Noche')  return h24 - 12;
+  return h24;
+}
+
+// Read the pickers for a prefix and return a "HH:MM" 24h string, or "" if incomplete
+function readTimePicker(prefix) {
+  const shift = document.getElementById('f-shift').value;
+  const h     = document.getElementById(`f-${prefix}-h`).value;
+  const m     = document.getElementById(`f-${prefix}-m`).value;
+  if (!shift || !h || m === '') return '';
+  const hour24 = toHour24(shift, parseInt(h, 10));
+  return `${String(hour24).padStart(2,'0')}:${m}`;
+}
+
+// Set the pickers for a prefix from a "HH:MM" 24h string + turno (call
+// refreshTimePicker first so the options for that turno already exist)
+function writeTimePicker(prefix, val24, shift) {
+  if (!val24) { clearTimePicker(prefix); return; }
+  const [h24, m] = val24.split(':').map(Number);
+  const h12 = toHour12(shift, h24);
+  document.getElementById(`f-${prefix}-h`).value = String(h12);
+  document.getElementById(`f-${prefix}-m`).value = String(m).padStart(2,'0');
+}
+
+function clearTimePicker(prefix) {
+  document.getElementById(`f-${prefix}-h`).value = '';
+  document.getElementById(`f-${prefix}-m`).value = '';
+}
+
+// Format a "HH:MM" 24h string for display as "h:mm AM/PM"
+function formatDisplay(val24) {
+  if (!val24) return '';
+  let [h, m] = val24.split(':').map(Number);
+  let ampm = h >= 12 ? 'PM' : 'AM';
+  let h12  = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
+function timeToMin(t) { const [h,m] = t.split(':').map(Number); return h * 60 + m; }
 
 // ─── FORM ────────────────────────────────────────────────────────────────
 function submitCourse() {
@@ -1025,8 +1127,9 @@ function startEdit(id) {
   document.getElementById('f-name').value  = c.name;
   document.getElementById('f-day').value   = c.day;
   document.getElementById('f-shift').value = c.shift;
-  writeTimePicker('start', c.start);
-  writeTimePicker('end', c.end);
+  onShiftChange(); // rebuild hour options for this turno first
+  writeTimePicker('start', c.start, c.shift);
+  writeTimePicker('end', c.end, c.shift);
   document.getElementById('f-room').value  = c.room;
   document.getElementById('f-color').value = c.color || '#7c3aed';
   document.getElementById('form-title').textContent    = 'Editar Curso';
@@ -1050,8 +1153,7 @@ function resetForm() {
   document.getElementById('f-day').value   = '';
   document.getElementById('f-shift').value = '';
   document.getElementById('f-color').value = '#7c3aed';
-  clearTimePicker('start');
-  clearTimePicker('end');
+  onShiftChange(); // disables & clears the time pickers again
 }
 
 // ─── DELETE ──────────────────────────────────────────────────────────────
@@ -1367,58 +1469,6 @@ function doImport() {
 // ─── UTILS ───────────────────────────────────────────────────────────────
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-// Convert "HH:MM" 24h string to minutes (internal storage format)
-function timeToMin(t) { const [h,m] = t.split(':').map(Number); return h * 60 + m; }
-
-// Read the three selects and return "HH:MM" 24h string, or "" if incomplete
-function readTimePicker(prefix) {
-  const h    = document.getElementById(`f-${prefix}-h`).value;
-  const m    = document.getElementById(`f-${prefix}-m`).value;
-  const ampm = document.getElementById(`f-${prefix}-ampm`).value;
-  if (!h || m === '' || !ampm) return '';
-  let hour = parseInt(h);
-  if (ampm === 'AM') { if (hour === 12) hour = 0; }
-  else               { if (hour !== 12) hour += 12; }
-  return `${String(hour).padStart(2,'0')}:${m}`;
-}
-
-// Set the three selects from a "HH:MM" 24h string
-function writeTimePicker(prefix, val24) {
-  if (!val24) { clearTimePicker(prefix); return; }
-  let [h, m] = val24.split(':').map(Number);
-  let ampm = h >= 12 ? 'PM' : 'AM';
-  let h12  = h % 12 || 12;
-  document.getElementById(`f-${prefix}-h`).value    = String(h12);
-  document.getElementById(`f-${prefix}-m`).value    = String(m).padStart(2,'0');
-  document.getElementById(`f-${prefix}-ampm`).value = ampm;
-}
-
-function clearTimePicker(prefix) {
-  document.getElementById(`f-${prefix}-h`).value    = '';
-  document.getElementById(`f-${prefix}-m`).value    = '';
-  document.getElementById(`f-${prefix}-ampm`).value = '';
-}
-
-// Format a "HH:MM" 24h string for display as "h:mm AM/PM"
-function formatDisplay(val24) {
-  if (!val24) return '';
-  let [h, m] = val24.split(':').map(Number);
-  let ampm = h >= 12 ? 'PM' : 'AM';
-  let h12  = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
-}
-
-// Populate hour options 1–12
-function buildHourOptions(selId) {
-  const sel = document.getElementById(selId);
-  for (let i = 1; i <= 12; i++) {
-    const opt = document.createElement('option');
-    opt.value = String(i);
-    opt.textContent = String(i);
-    sel.appendChild(opt);
-  }
-}
 
 function lightenColor(hex, amount) {
   let r = parseInt(hex.slice(1,3),16);
